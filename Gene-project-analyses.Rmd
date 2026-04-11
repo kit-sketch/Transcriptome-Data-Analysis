@@ -1,0 +1,898 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+# Biostatistics Project Report : Transcriptome Analyses
+
+Clears Environment
+```{r}
+rm(list = ls())
+```
+
+sets the working directory
+```{r}
+setwd("F:/semesters/sem8/biostatistics/transcriptome-data-analysis")
+getwd()
+```
+imports Infect file and plots the barplot.
+```{r}
+infect <- read.table(
+  file = "infect.txt",
+  header = FALSE,
+  sep = "\t",
+  stringsAsFactors = FALSE
+)
+
+colnames(infect) <- c("SRR", "Infectivity", "CellLine")
+infect$Infectivity <- as.numeric(infect$Infectivity)
+
+############################################
+## CONDITIONAL COLORING (FIXED)
+############################################
+
+infect$color <- ifelse(
+  infect$Infectivity < 4, "red3",
+  ifelse(infect$Infectivity < 30, "seagreen3", "steelblue")
+)
+
+############################################
+## SORT
+############################################
+
+infect_sorted <- infect[order(infect$Infectivity), ]
+
+############################################
+## PLOT
+############################################
+
+par(mar = c(4, 10, 2, 1))
+
+barplot(
+  infect_sorted$Infectivity,
+  horiz = TRUE,
+  names.arg = infect_sorted$CellLine,
+  las = 1,
+  col = infect_sorted$color,
+  border = NA,
+  xlab = "Nef+/Nef- infectivity ratio",
+  xlim = c(0, max(infect_sorted$Infectivity) * 1.1),
+  cex.names = 0.8
+)
+```
+**Figure 1:** Bar plot
+
+*imports the files of transcriptome of cell lines*
+
+```{r}
+
+gene_id <- "ENSG00000164300"
+expr_folder <- "F:/semesters/sem8/biostatistics/transcriptome-data-analysis/gene data"
+
+############################################
+## -------- PREP INFECT (NO READING) --------
+############################################
+
+# Just ensure columns are correct
+colnames(infect) <- c("SRR", "Infectivity", "CellLine")
+infect$Infectivity <- as.numeric(infect$Infectivity)
+
+############################################
+## -------- STEP 1: MAP SRR IDs --------
+############################################
+
+file_to_cellline <- c(
+  "SRR2166626" = "HT1080",
+  "SRR2166634" = "CEM X 174",
+  "SRR2166632" = "IMR90",
+  "SRR2166624" = "MT4",
+  "SRR2166629" = "DAUDI",
+  "SRR2166635" = "WI38",
+  "SRR2166630" = "C8166",
+  "SRR2166627" = "RAJI",
+  "SRR2166625" = "HSB2",
+  "SRR2166628" = "CEM SS",
+  "SRR2166633" = "CEM A 301",
+  "SRR2166631" = "RAMOS",
+  "SRR2166637" = "bl41",
+  "SRR2166636" = "JURKAT E6.1",
+  "SRR2166638" = "Jurkat tag"
+)
+
+############################################
+## -------- STEP 2: READ EXPRESSION --------
+############################################
+
+files <- list.files(expr_folder, full.names = TRUE)
+
+read_expr <- function(file) {
+  df <- read.table(file, header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+  df <- df[, 1:2]
+
+  srr <- tools::file_path_sans_ext(basename(file))
+  cellline <- file_to_cellline[srr]
+
+  colnames(df) <- c("GeneID", cellline)
+  df
+}
+
+expr_list <- lapply(files, read_expr)
+
+expr_merged <- Reduce(
+  function(x, y) merge(x, y, by = "GeneID", all = TRUE),
+  expr_list
+)
+
+############################################
+## -------- STEP 3: EXTRACT SERINC5 --------
+############################################
+
+serinc5 <- expr_merged[expr_merged$GeneID == gene_id, -1]
+
+serinc5 <- as.data.frame(t(serinc5))
+serinc5$CellLine <- rownames(serinc5)
+rownames(serinc5) <- NULL
+
+colnames(serinc5) <- c("Expression", "CellLine")
+serinc5$Expression <- as.numeric(serinc5$Expression)
+
+############################################
+## -------- STEP 4: MERGE --------
+############################################
+
+data <- merge(infect, serinc5, by = "CellLine")
+data <- data[complete.cases(data[, c("Infectivity", "Expression")]), ]
+
+cat("Number of matched samples:", nrow(data), "\n")
+
+############################################
+## -------- STEP 5: CONDITIONAL COLORS --------
+############################################
+## (using your new logic instead of manual mapping)
+
+data$color <- ifelse(
+  data$Infectivity < 4, "red3",
+  ifelse(data$Infectivity < 30, "seagreen3", "steelblue")
+)
+
+############################################
+## -------- STEP 6: CORRELATION --------
+############################################
+
+ct <- cor.test(data$Expression, data$Infectivity)
+
+r  <- round(ct$estimate, 3)
+r2 <- round(r^2, 4)
+
+print(ct)
+
+############################################
+## -------- STEP 7: SCATTER PLOT (UPDATED) --------
+############################################
+
+# Scale expression
+data$Expression_scaled <- data$Expression / 100
+
+par(mar = c(5, 5, 2, 1))
+
+plot(
+  data$Infectivity,          # X = infectivity
+  data$Expression_scaled,    # Y = scaled expression
+  pch = 21,
+  bg  = data$color,
+  col = "black",
+  cex = 1.7,
+  xlab = expression("Nef"^"+"*"/Nef"^"-"*" infectivity ratio"),
+  ylab = "SERINC5 expression (scaled RPM)"
+)
+
+# Regression (IMPORTANT: update model)
+abline(lm(Expression_scaled ~ Infectivity, data = data), lwd = 2)
+
+# Annotation
+text(
+  x = min(data$Infectivity),
+  y = max(data$Expression_scaled),
+  labels = bquote(
+    atop(
+      italic(r) == .(r),
+      atop(
+        italic(R)^2 == .(r2),
+        italic(P) < 0.001
+      )
+    )
+  ),
+  adj = c(0, 1),
+  cex = 1
+)
+```
+**Figure 2:** plot of the expression of serinc5 in various cell lines vs Nef+/Nef– infectivity ratio
+
+
+## Statistical tests applied on SERINC5 expression levels for various 
+### Pearson correlation
+```{r}
+
+cor.test(data$Expression, data$Infectivity, method = "pearson")
+```
+SERINC5 expression levels and INfectivity show a significant correlation of 89% (P***)
+
+### linear regression
+```{r}
+
+model <- lm(Expression ~ Infectivity, data = data)
+summary(model)
+
+```
+SERINC5 expression levels show a significant positive trend of with R2 value of 0.79 (P***)
+
+### Group Comparison (t-test)
+```{r}
+
+data$Group <- ifelse(data$Infectivity < 4, "Low",
+               ifelse(data$Infectivity < 30, "Medium", "High"))
+
+t.test(Expression ~ Group, data = subset(data, Group %in% c("Low","High")))
+##########Whether high vs low infectivity groups differ in SERINC5 expression
+
+```
+Although SERINC5 expression appears much higher in high-infectivity cell lines compared to low-infectivity ones, the difference was not statistically significant (Welch t-test, p = 0.104), likely due to small sample size and high variability.`
+
+### ANOVA : comparing low Vs medium Vs High
+```{r}
+
+anova_model <- aov(Expression ~ Group, data = data)
+summary(anova_model)
+
+```
+A one-way ANOVA revealed a highly significant difference in SERINC5 expression across infectivity groups (F = 60.55, p < 0.001), indicating that expression varies systematically with infectivity level.`
+
+### TukeyHSD post-hoc test
+```{r}
+
+TukeyHSD(anova_model)
+
+```
+Tukey’s post-hoc analysis revealed significant differences between all infectivity groups. SERINC5 expression was highest in high-infectivity cell lines, intermediate in medium-infectivity lines, and lowest in low-infectivity lines (all pairwise comparisons p < 0.05), indicating a graded increase in expression with infectivity.
+
+Earlier we saw:
+    - t-test (Low vs High → not significant
+    - ANOVA → significant
+    - Tukey → ALL pairs significant
+
+This is because Tukey uses pooled variance from ANOVA and is more powerful.
+
+### Variance test F test:
+```{r}
+
+data_2 <- subset(data, Group %in% c("Low", "High"))
+var.test(Expression ~ Group, data = data_2)
+```
+`Stable than Welch t-test on small samples.
+
+There is a significant difference in variability of SERINC5 expression between the two groups.
+
+This also explains earlier result:
+t-test was not significant while ANOVA + Tukey were significant
+
+Because:
+    - Welch t-test accounts for unequal variance
+    - High variance → reduces statistical power
+    - So p-value becomes non-significant
+
+### Normality check: Shapiro test`
+```{r}
+
+shapiro.test(data$Expression)
+```
+Data is normally distributed.
+
+## QQ plots 
+```{r}
+par(mfrow = c(1,1))
+
+qqnorm(data$Expression,
+       main = "QQ Plot: SERINC5 Expression",
+       pch = 19)
+
+qqline(data$Expression, col = "red", lwd = 2)
+
+```
+**Figure 3:** QQ plot analysis revealed strong deviation from normality with right-skewed distribution of SERINC5 expression. This justifies the use of transformation or robust statistical methods.
+
+
+```{r}
+qqnorm(data$Infectivity,
+       main = "QQ Plot: Infectivity",
+       pch = 19)
+
+qqline(data$Infectivity, col = "blue", lwd = 2)
+
+```
+**Figure 4:** Infectivity values deviate from normality, showing a right-skewed distribution with a heavy upper tail and clustering of low values.
+
+```{r}
+par(mfrow = c(1,3))
+
+groups <- unique(data$Group)
+
+for (g in groups) {
+  subset_data <- data$Expression[data$Group == g]
+
+  qqnorm(subset_data,
+         main = paste("QQ:", g),
+         pch = 19)
+
+  qqline(subset_data, col = "red", lwd = 2)
+}
+
+```
+**Figure 5:** QQ plots indicate that expression values deviate from normality across groups, particularly in the low and medium infectivity groups, while the high group has insufficient sample size to assess distribution.
+
+
+
+```{r}
+############################################
+## CONTINUATION: GENE-WISE CORRELATION
+############################################
+
+############################################
+## -------- STEP 1: READ & MERGE EXPRESSION --------
+############################################
+
+# Reuse expr_folder already defined
+
+files <- list.files(expr_folder, full.names = TRUE)
+
+read_expr <- function(file) {
+  df <- read.table(file, header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+  df <- df[, 1:2]
+
+  srr <- tools::file_path_sans_ext(basename(file))
+  cellline <- file_to_cellline[srr]
+
+  colnames(df) <- c("GeneID", cellline)
+  df
+}
+
+expr_list <- lapply(files, read_expr)
+
+expr_merged <- Reduce(
+  function(x, y) merge(x, y, by = "GeneID", all = TRUE),
+  expr_list
+)
+
+############################################
+## -------- STEP 2: ALIGN WITH INFECTIVITY --------
+############################################
+
+cell_order <- infect$CellLine
+
+# Ensure all names exist
+common_cells <- intersect(cell_order, colnames(expr_merged))
+
+expr_mat <- expr_merged[, common_cells]
+
+# Match infect order
+infect_sub <- infect[infect$CellLine %in% common_cells, ]
+expr_mat <- expr_mat[, infect_sub$CellLine]
+
+expr_mat <- apply(expr_mat, 2, as.numeric)
+
+############################################
+## -------- STEP 3: GENE-WISE CORRELATION --------
+############################################
+
+cor_results <- apply(expr_mat, 1, function(gene_expr) {
+
+  valid <- is.finite(gene_expr) & is.finite(infect_sub$Infectivity)
+
+  if (sum(valid) < 3) {
+    return(c(r = NA, R2 = NA, p = NA))
+  }
+
+  ct <- cor.test(
+    gene_expr[valid],
+    infect_sub$Infectivity[valid],
+    method = "pearson"
+  )
+
+  c(
+    r  = unname(ct$estimate),
+    R2 = unname(ct$estimate)^2,
+    p  = ct$p.value
+  )
+})
+
+############################################
+## -------- STEP 4: RESULTS TABLE --------
+############################################
+
+cor_df <- data.frame(
+  GeneID = expr_merged$GeneID,
+  t(cor_results),
+  row.names = NULL
+)
+
+cor_df$r  <- as.numeric(cor_df$r)
+cor_df$R2 <- as.numeric(cor_df$R2)
+cor_df$p  <- as.numeric(cor_df$p)
+
+############################################
+## -------- STEP 5: MULTIPLE TEST CORRECTION --------
+############################################
+
+cor_df$FDR <- p.adjust(cor_df$p, method = "BH")
+
+############################################
+## -------- STEP 6: SORT --------
+############################################
+
+cor_df <- cor_df[order(-abs(cor_df$r)), ]
+
+############################################
+## -------- OUTPUT --------
+############################################
+
+head(cor_df)
+
+# Save results (optional)
+write.csv(cor_df, "gene_correlation_results.csv", row.names = FALSE)
+
+cor_df[cor_df$GeneID == "ENSG00000164300", ]
+```
+Genome-wide correlation analysis identified genes whose expression correlates with infectivity, with SERINC5 ranking among the top candidates, supporting its functional role. The correlations, R2, p, and FDR for all the genes is in a csv file.  
+
+
+### Volcano plot
+```{r}
+############################################
+## CLEAN VOLCANO PLOT (SMALL-n CORRELATIONS)
+############################################
+
+## thresholds
+r_cutoff   <- 0.6
+fdr_cutoff <- 0.05
+top_n      <- 10   # number of genes to label
+
+## prepare data
+cor_df$negLogFDR <- -log10(cor_df$FDR)
+
+cor_df$Group <- "Not significant"
+cor_df$Group[cor_df$FDR < fdr_cutoff & cor_df$r >  r_cutoff] <- "Positive"
+cor_df$Group[cor_df$FDR < fdr_cutoff & cor_df$r < -r_cutoff] <- "Negative"
+
+cols <- c(
+  "Positive"        = "firebrick3",
+  "Negative"        = "steelblue",
+  "Not significant" = "grey70"
+)
+
+## plot
+par(mar = c(5, 5, 2, 1))
+
+plot(
+  cor_df$r,
+  cor_df$negLogFDR,
+  pch = 16,
+  col = cols[cor_df$Group],
+  cex = 0.7,
+  xlab = "Pearson correlation (r)",
+  ylab = expression(-log[10]("FDR")),
+  main = "Gene expression vs Infectivity"
+)
+
+## threshold lines
+abline(v = c(-r_cutoff, r_cutoff), lty = 2)
+abline(h = -log10(fdr_cutoff), lty = 2)
+
+## legend
+legend(
+  "topright",
+  legend = names(cols),
+  col = cols,
+  pch = 16,
+  bty = "n"
+)
+
+## label only top genes
+top_hits <- cor_df[cor_df$Group != "Not significant", ]
+top_hits <- top_hits[order(-abs(top_hits$r)), ][1:min(top_n, nrow(top_hits)), ]
+
+if (nrow(top_hits) > 0) {
+  text(
+    top_hits$r,
+    top_hits$negLogFDR,
+    labels = top_hits$GeneID,
+    pos = 3,
+    cex = 0.7
+  )
+}
+
+```
+**Figure 6:** Volcano plot between Gene expression and Infectivity
+
+### CORRELATION vs MEAN EXPRESSION
+```{r}
+############################################
+## CORRELATION vs MEAN EXPRESSION
+############################################
+
+cor_df$MeanExpr <- rowMeans(expr_mat, na.rm = TRUE)
+
+plot(
+  cor_df$r,
+  log2(cor_df$MeanExpr + 1),
+  pch = 16,
+  col = cols[cor_df$Group],
+  cex = 0.7,
+  xlab = "Pearson correlation (r)",
+  ylab = expression(log[2]("Mean expression (RPM + 1)")),
+  main = "Correlation vs expression abundance"
+)
+
+abline(v = c(-r_cutoff, r_cutoff), lty = 2)
+
+legend(
+  "bottomright",
+  legend = names(cols),
+  col = cols,
+  pch = 16,
+  bty = "n"
+)
+
+```
+**Figure 7:** correlation Vs expression-Abudance plot: Are strong correlations driven by low-expression noise or real biology? Many of these genes are moderately to highly expressed
+This suggests they are stable cellular programs, not noise
+
+### BOXPLOT WITH TOP 10 GENE NAMES ONLY
+```{r}
+############################################
+## BOXPLOT WITH TOP 10 GENE NAMES ONLY
+############################################
+
+# Top 10 genes
+top_n <- 10
+top_genes <- cor_df$GeneID[1:top_n]
+
+# Connect to Ensembl (use mirror to avoid timeout)
+mart <- useEnsembl(
+  biomart = "genes",
+  dataset = "hsapiens_gene_ensembl",
+  mirror = "asia"
+)
+
+# Query ONLY top 10 genes
+gene_map <- getBM(
+  attributes = c("ensembl_gene_id", "hgnc_symbol"),
+  filters = "ensembl_gene_id",
+  values = top_genes,
+  mart = mart
+)
+
+# Create lookup
+gene_lookup <- setNames(gene_map$hgnc_symbol, gene_map$ensembl_gene_id)
+
+# Replace missing names
+top_gene_names <- gene_lookup[top_genes]
+top_gene_names[is.na(top_gene_names) | top_gene_names == ""] <- top_genes
+
+############################################
+## EXPRESSION EXTRACTION
+############################################
+
+expr_top <- expr_merged[expr_merged$GeneID %in% top_genes, ]
+
+expr_top_mat <- expr_top[, -1]
+expr_top_mat <- apply(expr_top_mat, 2, as.numeric)
+
+# Log transform
+expr_top_mat <- log2(expr_top_mat + 1)
+
+# Transpose
+expr_top_t <- as.data.frame(t(expr_top_mat))
+
+# Apply gene names
+colnames(expr_top_t) <- top_gene_names
+
+############################################
+## PLOT
+############################################
+
+par(mar = c(8, 4, 2, 1))
+
+boxplot(
+  expr_top_t,
+  las = 2,
+  col = "grey85",
+  border = "grey40",
+  ylab = "Expression (log2)",
+  main = "Top 10 Correlated Genes"
+)
+```
+**Figure 8:** Box plot of 10 most correlated genes
+
+
+### HEATMAP WITH GENE NAMES (biomaRt, TOP 10 ONLY)
+```{r}
+############################################
+## HEATMAP WITH GENE NAMES (biomaRt, TOP 10 ONLY)
+############################################
+
+# Connect to Ensembl
+mart <- useMart(
+  biomart = "ensembl",
+  dataset = "hsapiens_gene_ensembl"
+)
+
+gene_map <- getBM(
+  attributes = c("ensembl_gene_id", "hgnc_symbol"),
+  filters = "ensembl_gene_id",
+  values = top_genes,
+  mart = mart
+)
+
+# Create lookup
+gene_lookup <- setNames(gene_map$hgnc_symbol, gene_map$ensembl_gene_id)
+
+# Replace missing names
+top_gene_names <- gene_lookup[top_genes]
+top_gene_names[is.na(top_gene_names) | top_gene_names == ""] <- top_genes
+
+############################################
+## HEATMAP DATA
+############################################
+
+# Reorder rows to match top_genes
+expr_top <- expr_merged[match(top_genes, expr_merged$GeneID), ]
+
+heat_mat <- expr_top[, -1]
+heat_mat <- apply(heat_mat, 2, as.numeric)
+
+# Log transform
+heat_mat <- log2(heat_mat + 1)
+
+# Use gene names instead of Ensembl IDs
+rownames(heat_mat) <- top_gene_names
+
+# Scale genes
+heat_mat_scaled <- t(scale(t(heat_mat)))
+
+############################################
+## HEATMAP PLOT
+############################################
+
+heatmap(
+  heat_mat_scaled,
+  Rowv = NA,
+  Colv = NA,
+  col = colorRampPalette(c("blue", "white", "red"))(50),
+  margins = c(6, 8),
+  main = "Top 10 Genes Heatmap"
+)
+
+
+```
+**Figure 9:** Visualization of the top 10 correlated genes revealed distinct expression patterns across cell lines, with higher expression levels observed in high-infectivity samples, consistent with correlation analysis.
+
+### Clustering
+```{r}
+dist_mat <- dist(t(expr_mat))
+hc <- hclust(dist_mat)
+
+plot(hc, main = "Hierarchical Clustering of Cell Lines")
+
+```
+**Figure 10:** Clustering: Based on Whole transcriptome
+
+Infectivity is driven by: specific genes (like SERINC5) NOT the entire transcriptome
+While infectivity groups show clear separation in targeted analyses, hierarchical clustering based on global gene expression reveals additional transcriptomic heterogeneity among cell lines.
+
+Analysis     Uses                    Result
+Bar plot     Infectivity only        clear groups
+Scatter      SERINC5 vs infectivity  strong correlation
+Clustering   ALL genes               mixed grouping
+
+
+```{r}
+top100 <- cor_df$GeneID[1:100]
+
+expr_top <- expr_merged[expr_merged$GeneID %in% top100, -1]
+expr_top <- apply(expr_top, 2, as.numeric)
+
+dist_mat <- dist(t(expr_top))
+hc <- hclust(dist_mat)
+
+plot(hc, main = "Clustering using top correlated genes")
+
+```
+**Figure 11:** Dendrogram based on 100 most correlated genes
+1. High group is very distinct
+
+Strong separation
+→ driven by top genes (like SERINC5)
+
+2. Medium group is heterogeneous
+
+Splits into subclusters
+→ suggests different biological mechanisms
+
+3. Low group is compact
+
+Similar transcriptomes
+→ consistently low expression of key genes
+
+A subset of genes (top correlated genes) is sufficient to recover infectivity-based grouping of cell lines.
+
+Hierarchical clustering based on top correlated genes revealed clear separation of high-infectivity cell lines from low-infectivity ones, with intermediate cell lines forming subclusters, indicating heterogeneity within the medium infectivity group.
+
+
+### Principal Component Analysis
+```{r}
+# Remove low-variance genes
+expr_mat_filtered <- expr_mat[
+  apply(expr_mat, 1, function(x) var(x, na.rm = TRUE)) > 1e-5, ]
+
+# Log transform (recommended)
+expr_mat_filtered <- log2(expr_mat_filtered + 1)
+
+# PCA
+pca <- prcomp(t(expr_mat_filtered), scale. = TRUE)
+
+# Variance explained
+var_explained <- (pca$sdev^2) / sum(pca$sdev^2)
+percent_var <- round(var_explained * 100, 2)
+
+pc1_var <- percent_var[1]
+pc2_var <- percent_var[2]
+
+# Plot
+plot(
+  pca$x[,1], pca$x[,2],
+  col = as.factor(data$Group),
+  pch = 19,
+  xlab = paste0("PC1 (", pc1_var, "%)"),
+  ylab = paste0("PC2 (", pc2_var, "%)"),
+  main = "PCA of Gene Expression"
+)
+
+legend("topright",
+       legend = levels(as.factor(data$Group)),
+       col = 1:length(unique(data$Group)),
+       pch = 19)
+```
+**Figure 12:** PCA of all genes together
+```{r}
+############################################
+## PCA WITH 3 PCs (TOP GENES)
+############################################
+
+top20 <- cor_df$GeneID[1:10]
+
+# KEEP ORDER
+expr_top <- expr_merged[match(top20, expr_merged$GeneID), -1]
+expr_top <- apply(expr_top, 2, as.numeric)
+
+# Log transform
+expr_top <- log2(expr_top + 1)
+
+# Remove zero variance
+expr_top <- expr_top[apply(expr_top, 1, var) > 0, ]
+
+# PCA
+pca_top <- prcomp(t(expr_top), scale. = TRUE)
+
+# Variance explained
+var_explained_top <- (pca_top$sdev^2) / sum(pca_top$sdev^2)
+percent_var_top <- round(var_explained_top * 100, 2)
+
+pc1_var <- percent_var_top[1]
+pc2_var <- percent_var_top[2]
+pc3_var <- percent_var_top[3]
+
+############################################
+## -------- PAIRWISE PLOTS (BEST) --------
+############################################
+
+par(mfrow = c(1,3))
+
+# PC1 vs PC2
+plot(
+  pca_top$x[,1], pca_top$x[,2],
+  col = as.factor(data$Group),
+  pch = 19,
+  xlab = paste0("PC1 (", pc1_var, "%)"),
+  ylab = paste0("PC2 (", pc2_var, "%)"),
+  main = "PC1 vs PC2"
+)
+
+# PC1 vs PC3
+plot(
+  pca_top$x[,1], pca_top$x[,3],
+  col = as.factor(data$Group),
+  pch = 19,
+  xlab = paste0("PC1 (", pc1_var, "%)"),
+  ylab = paste0("PC3 (", pc3_var, "%)"),
+  main = "PC1 vs PC3"
+)
+
+# PC2 vs PC3
+plot(
+  pca_top$x[,2], pca_top$x[,3],
+  col = as.factor(data$Group),
+  pch = 19,
+  xlab = paste0("PC2 (", pc2_var, "%)"),
+  ylab = paste0("PC3 (", pc3_var, "%)"),
+  main = "PC2 vs PC3"
+)
+
+############################################
+## -------- LEGEND --------
+############################################
+
+legend(
+  "topright",
+  legend = levels(as.factor(data$Group)),
+  col = 1:length(unique(data$Group)),
+  pch = 19
+)
+```
+**Figure 13:** PCA for 20 most correlated genes
+
+PCA of global gene expression does not show distinct clustering of infectivity groups, indicating that infectivity-related variation is driven by a subset of genes rather than overall transcriptomic differences.
+
+
+### K- means clustering
+
+```{r}
+############################################
+## K-MEANS CLUSTERING ON PCA
+############################################
+
+# Choose number of clusters (3 = Low/Medium/High)
+k <- 3
+
+# Run k-means on first 3 PCs
+set.seed(123)
+km <- kmeans(pca_top$x[,1:3], centers = k)
+
+clusters <- as.factor(km$cluster)
+
+############################################
+## PLOT WITH CLUSTERS
+############################################
+
+par(mfrow = c(1,1))
+
+plot(
+  pca_top$x[,1], pca_top$x[,2],
+  col = clusters,
+  pch = 19,
+  cex = 1.5,
+  xlab = paste0("PC1 (", pc1_var, "%)"),
+  ylab = paste0("PC2 (", pc2_var, "%)"),
+  main = "PCA with K-means Clusters"
+)
+
+legend(
+  "topright",
+  legend = paste("Cluster", 1:k),
+  col = 1:k,
+  pch = 19
+)
+```
+**Figure 14:** Clusters shown be different colours but not necessariry corresponting to the groups. 
+
+data is gradient-like
+Infectivity changes gradually
+Not discrete groups
+
+So PCA shows: overlap, spread, continuum
+
+Your dataset has: Strong trend (gradient), Not perfectly separated clusters
+
+While PCA suggests a continuous gradient of variation associated with infectivity, k-means clustering partitions this gradient into discrete groups, highlighting underlying structure but not strict separation.
+
+
