@@ -688,92 +688,6 @@ hc <- hclust(dist_mat)
 plot(hc, main = "Clustering using top correlated genes")
 ```
 PCA whole genome
-```{r}
-############################################
-## PCA WITH VARIANCE CHECK + BETTER PLOT
-############################################
-
-# Remove constant genes
-expr_mat_filtered <- expr_mat[
-  apply(expr_mat, 1, var, na.rm = TRUE) > 0, ]
-
-# Log transform (important for RNA-seq)
-expr_mat_filtered <- log2(expr_mat_filtered + 1)
-
-# PCA
-pca <- prcomp(t(expr_mat_filtered), scale. = TRUE)
-
-############################################
-## -------- VARIANCE EXPLAINED --------
-############################################
-
-var_explained <- (pca$sdev^2) / sum(pca$sdev^2)
-cum_var <- cumsum(var_explained)
-
-# % variance
-percent_var <- round(var_explained * 100, 2)
-
-# PCs needed for 95%
-pcs_95 <- which(cum_var >= 0.90)[1]
-
-cat("Number of PCs for 95% variance:", pcs_95, "\n")
-
-############################################
-## -------- SCREE PLOT --------
-############################################
-
-plot(
-  percent_var,
-  type = "b",
-  pch = 19,
-  xlab = "Principal Component",
-  ylab = "Variance Explained (%)",
-  main = "Scree Plot"
-)
-
-abline(v = pcs_95, col = "red", lty = 2)
-
-############################################
-## -------- BETTER PCA PLOT --------
-############################################
-
-# Colors (clean + consistent)
-group_colors <- c("Low" = "red", "Medium" = "green3", "High" = "black")
-cols <- group_colors[data$Group]
-
-pc1_var <- percent_var[1]
-pc2_var <- percent_var[2]
-
-par(mar = c(5,5,2,2))
-
-plot(
-  pca$x[,1], pca$x[,2],
-  col = cols,
-  pch = 19,
-  cex = 1.5,
-  xlab = paste0("PC1 (", pc1_var, "%)"),
-  ylab = paste0("PC2 (", pc2_var, "%)"),
-  main = "PCA of Gene Expression"
-)
-
-# Add labels (optional but useful)
-text(
-  pca$x[,1], pca$x[,2],
-  labels = data$CellLine,
-  pos = 3,
-  cex = 0.7
-)
-
-# Legend
-legend(
-  "topleft",
-  legend = names(group_colors),
-  col = group_colors,
-  pch = 19,
-  pt.cex = 1.5
-)
-```
-
 
 ```{r}
 ############################################
@@ -860,3 +774,100 @@ legend(
   pt.cex = 1.5
 )
 ```
+
+
+
+
+```{r}
+############################################
+## FIXED PCA + PC1 GENE EXTRACTION
+############################################
+
+# Get genes (KEEP ORDER)
+top20 <- cor_df$GeneID[1:20]
+
+expr_top <- expr_merged[match(top20, expr_merged$GeneID), ]
+
+# Save gene IDs
+gene_ids <- expr_top$GeneID
+
+# Remove GeneID column
+expr_top <- expr_top[, -1]
+
+# Convert to numeric WITHOUT losing rownames
+expr_top <- as.matrix(expr_top)
+mode(expr_top) <- "numeric"
+
+# Restore rownames
+rownames(expr_top) <- gene_ids
+
+# Log transform
+expr_top <- log2(expr_top + 1)
+
+# Remove zero variance
+expr_top <- expr_top[apply(expr_top, 1, var) > 0, ]
+
+# PCA
+pca_top <- prcomp(t(expr_top), scale. = TRUE)
+
+############################################
+## PC1 LOADINGS
+############################################
+
+loadings <- pca_top$rotation[, 1]
+
+# Now names will exist ✔
+head(loadings)
+
+############################################
+## TOP GENES
+############################################
+
+top_n <- 10
+
+top_genes <- sort(abs(loadings), decreasing = TRUE)[1:top_n]
+
+cat("Top PC1 genes:\n")
+print(top_genes)
+
+cat("\nGene IDs:\n")
+print(names(top_genes))
+
+############################################
+## POSITIVE vs NEGATIVE
+############################################
+
+pos_genes <- sort(loadings, decreasing = TRUE)[1:10]
+neg_genes <- sort(loadings, decreasing = FALSE)[1:10]
+
+cat("\nPositive drivers:\n")
+print(pos_genes)
+
+cat("\nNegative drivers:\n")
+print(neg_genes)
+```
+Elbow plot
+```{r}
+############################################
+## ELBOW PLOT FOR K-MEANS
+############################################
+
+# Use first few PCs (e.g., 3 PCs)
+pc_data <- pca_top$x[, 1:3]
+
+# Compute WSS for different k
+wss <- sapply(1:10, function(k) {
+  kmeans(pc_data, centers = k, nstart = 10)$tot.withinss
+})
+
+# Plot
+plot(
+  1:10, wss,
+  type = "b",
+  pch = 19,
+  xlab = "Number of clusters (k)",
+  ylab = "Within-cluster sum of squares (WSS)",
+  main = "Elbow Plot"
+)
+```
+
