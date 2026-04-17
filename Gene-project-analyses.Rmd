@@ -5,17 +5,9 @@ output: html_notebook
 
 This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
 
-Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
-
-
-Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
-
-When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Ctrl+Shift+K* to preview the HTML file).
-
-The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
+# Biostatistics Project Report : Transcriptome Analyses
 
 Clears Environment
-
 ```{r}
 rm(list = ls())
 ```
@@ -27,6 +19,7 @@ getwd()
 ```
 imports Infect file and plots the barplot.
 ```{r}
+
 infect <- read.table(
   file = "infect.txt",
   header = FALSE,
@@ -70,8 +63,9 @@ barplot(
   cex.names = 0.8
 )
 ```
+**Figure 1:** Bar plot
 
-imports the files of transcriptome of cell lines and plots the expression of serinc5 in various cell lines vs Nef+/Nef– infectivity ratio
+*imports the files of transcriptome of cell lines*
 
 ```{r}
 
@@ -215,73 +209,91 @@ text(
   cex = 1
 )
 ```
+**Figure 2:** plot of the expression of serinc5 in various cell lines vs Nef+/Nef– infectivity ratio
 
 
-
-Statistical tests applied on SERINC5 expression levels for various  
+## Statistical tests applied on SERINC5 expression levels for various 
+### Pearson correlation
 ```{r}
-###Pearson correlation
+
 cor.test(data$Expression, data$Infectivity, method = "pearson")
+```
+SERINC5 expression levels and INfectivity show a significant correlation of 89% (P***)
 
 ### linear regression
+```{r}
+
 model <- lm(Expression ~ Infectivity, data = data)
 summary(model)
 
-###Group Comparison (t-test)
+```
+SERINC5 expression levels show a significant positive trend of with R2 value of 0.79 (P***)
+
+### Group Comparison (t-test)
+```{r}
+
 data$Group <- ifelse(data$Infectivity < 4, "Low",
                ifelse(data$Infectivity < 30, "Medium", "High"))
 
 t.test(Expression ~ Group, data = subset(data, Group %in% c("Low","High")))
 ##########Whether high vs low infectivity groups differ in SERINC5 expression
 
+```
+Although SERINC5 expression appears much higher in high-infectivity cell lines compared to low-infectivity ones, the difference was not statistically significant (Welch t-test, p = 0.104), likely due to small sample size and high variability.`
 
 ### ANOVA : comparing low Vs medium Vs High
+```{r}
+
 anova_model <- aov(Expression ~ Group, data = data)
 summary(anova_model)
 
-###TukeyHSD post-hoc test
+```
+A one-way ANOVA revealed a highly significant difference in SERINC5 expression across infectivity groups (F = 60.55, p < 0.001), indicating that expression varies systematically with infectivity level.`
+
+### TukeyHSD post-hoc test
+```{r}
+
 TukeyHSD(anova_model)
 
-###Variance test F test:
-data_2 <- subset(data, Group %in% c("Low", "High"))
-
-var.test(Expression ~ Group, data = data_2)
-
-###Normality check: Shapiro test
-shapiro.test(data$Expression)
 ```
-
-SERINC5 expression levels and INfectivity show a significant correlation of 89% (P***)
-
-SERINC5 expression levels show a significant positive trend of with R2 value of 0.79 (P***)
-
-Although SERINC5 expression appears much higher in high-infectivity cell lines compared to low-infectivity ones, the difference was not statistically significant (Welch t-test, p = 0.104), likely due to small sample size and high variability.
-
-A one-way ANOVA revealed a highly significant difference in SERINC5 expression across infectivity groups (F = 60.55, p < 0.001), indicating that expression varies systematically with infectivity level.
-
-Tukey’s post-hoc analysis revealed significant differences between all infectivity groups. SERINC5 expression was highest in high-infectivity cell lines, intermediate in medium-infectivity lines, and lowest in low-infectivity lines (all pairwise comparisons p < 0.05), indicating a graded increase in expression with infectivity
+Tukey’s post-hoc analysis revealed significant differences between all infectivity groups. SERINC5 expression was highest in high-infectivity cell lines, intermediate in medium-infectivity lines, and lowest in low-infectivity lines (all pairwise comparisons p < 0.05), indicating a graded increase in expression with infectivity.
 
 Earlier we saw:
-t-test (Low vs High) → not significant
-ANOVA → significant
-Tukey → ALL pairs significant
-This is because Tukey uses pooled variance from ANOVA and is More 
+    - t-test (Low vs High → not significant
+    - ANOVA → significant
+    - Tukey → ALL pairs significant
 
-stable than Welch t-test on small samples.
+This is because Tukey uses pooled variance from ANOVA and is more powerful.
+
+### Variance test F test:
+```{r}
+
+data_2 <- subset(data, Group %in% c("Low", "High"))
+var.test(Expression ~ Group, data = data_2)
+```
+`Stable than Welch t-test on small samples.
 
 There is a significant difference in variability of SERINC5 expression between the two groups.
+
 This also explains earlier result:
 t-test was not significant while ANOVA + Tukey were significant
+
 Because:
-Welch t-test accounts for unequal variance
-High variance → reduces statistical power
-So p-value becomes non-significant
+    - Welch t-test accounts for unequal variance
+    - High variance → reduces statistical power
+    - So p-value becomes non-significant
 
-From Shapiro-Wilk normality test, Data is normally distributed.
+### Normality check: Shapiro test`
+```{r}
 
+shapiro.test(data$Expression)
+```
+Data is normally distributed.
 
+###False discovery rate (FDR) correction
+False discovery rate (FDR) correction was applied to gene-wise correlation analyses to account for multiple testing. For targeted statistical tests (correlation, ANOVA, regression), correction was not required due to the limited number of hypotheses tested.
 
-QQ plot serinc5 exp
+## QQ plots 
 ```{r}
 par(mfrow = c(1,1))
 
@@ -290,8 +302,9 @@ qqnorm(data$Expression,
        pch = 19)
 
 qqline(data$Expression, col = "red", lwd = 2)
+
 ```
-QQ plot analysis revealed strong deviation from normality with right-skewed distribution of SERINC5 expression. This justifies the use of transformation or robust statistical methods.
+**Figure 3:** QQ plot analysis revealed strong deviation from normality with right-skewed distribution of SERINC5 expression. This justifies the use of transformation or robust statistical methods.
 
 
 ```{r}
@@ -300,9 +313,9 @@ qqnorm(data$Infectivity,
        pch = 19)
 
 qqline(data$Infectivity, col = "blue", lwd = 2)
-```
-Infectivity values deviate from normality, showing a right-skewed distribution with a heavy upper tail and clustering of low values.
 
+```
+**Figure 4:** Infectivity values deviate from normality, showing a right-skewed distribution with a heavy upper tail and clustering of low values.
 
 ```{r}
 par(mfrow = c(1,3))
@@ -318,12 +331,12 @@ for (g in groups) {
 
   qqline(subset_data, col = "red", lwd = 2)
 }
+
 ```
-QQ plots indicate that expression values deviate from normality across groups, particularly in the low and medium infectivity groups, while the high group has insufficient sample size to assess distribution.
+**Figure 5:** QQ plots indicate that expression values deviate from normality across groups, particularly in the low and medium infectivity groups, while the high group has insufficient sample size to assess distribution.
 
 
 
- CONTINUATION: GENE-WISE CORRELATION
 ```{r}
 ############################################
 ## CONTINUATION: GENE-WISE CORRELATION
@@ -437,7 +450,7 @@ cor_df[cor_df$GeneID == "ENSG00000164300", ]
 Genome-wide correlation analysis identified genes whose expression correlates with infectivity, with SERINC5 ranking among the top candidates, supporting its functional role. The correlations, R2, p, and FDR for all the genes is in a csv file.  
 
 
-CLEAN VOLCANO PLOT (SMALL-n CORRELATIONS)
+### Volcano plot
 ```{r}
 ############################################
 ## CLEAN VOLCANO PLOT (SMALL-n CORRELATIONS)
@@ -503,12 +516,9 @@ if (nrow(top_hits) > 0) {
 }
 
 ```
+**Figure 6:** Volcano plot between Gene expression and Infectivity
 
-
-
-
-
-CORRELATION vs MEAN EXPRESSION
+### CORRELATION vs MEAN EXPRESSION
 ```{r}
 ############################################
 ## CORRELATION vs MEAN EXPRESSION
@@ -538,18 +548,16 @@ legend(
 )
 
 ```
-correlation Vs expression-Abudance plot: Are strong correlations driven by low-expression noise or real biology? Many of these genes are moderately to highly expressed
+**Figure 7:** correlation Vs expression-Abudance plot: Are strong correlations driven by low-expression noise or real biology? Many of these genes are moderately to highly expressed
 This suggests they are stable cellular programs, not noise
 
-
-Box plot
+### BOXPLOT WITH TOP 10 GENE NAMES ONLY
 ```{r}
+
 ############################################
 ## BOXPLOT WITH TOP 10 GENE NAMES ONLY
 ############################################
-
-library(biomaRt)
-
+library("biomaRt")
 # Top 10 genes
 top_n <- 10
 top_genes <- cor_df$GeneID[1:top_n]
@@ -608,16 +616,21 @@ boxplot(
   ylab = "Expression (log2)",
   main = "Top 10 Correlated Genes"
 )
-
 ```
+**Figure 8:** Box plot of 10 most correlated genes
 
 
-Heat MAp
+### HEATMAP WITH GENE NAMES (biomaRt, TOP 10 ONLY)
 ```{r}
 ############################################
 ## HEATMAP WITH GENE NAMES (biomaRt, TOP 10 ONLY)
 ############################################
 
+# Connect to Ensembl
+mart <- useMart(
+  biomart = "ensembl",
+  dataset = "hsapiens_gene_ensembl"
+)
 
 gene_map <- getBM(
   attributes = c("ensembl_gene_id", "hgnc_symbol"),
@@ -664,18 +677,30 @@ heatmap(
   margins = c(6, 8),
   main = "Top 10 Genes Heatmap"
 )
+
+
 ```
+**Figure 9:** Visualization of the top 10 correlated genes revealed distinct expression patterns across cell lines, with higher expression levels observed in high-infectivity samples, consistent with correlation analysis.
 
-
-Clustering
+### Clustering
 ```{r}
 dist_mat <- dist(t(expr_mat))
 hc <- hclust(dist_mat)
 
 plot(hc, main = "Hierarchical Clustering of Cell Lines")
-```
 
-cluster with high correlation genes
+```
+**Figure 10:** Clustering: Based on Whole transcriptome
+
+Infectivity is driven by: specific genes (like SERINC5) NOT the entire transcriptome
+While infectivity groups show clear separation in targeted analyses, hierarchical clustering based on global gene expression reveals additional transcriptomic heterogeneity among cell lines.
+
+Analysis     Uses                    Result
+Bar plot     Infectivity only        clear groups
+Scatter      SERINC5 vs infectivity  strong correlation
+Clustering   ALL genes               mixed grouping
+
+
 ```{r}
 top100 <- cor_df$GeneID[1:100]
 
@@ -686,120 +711,74 @@ dist_mat <- dist(t(expr_top))
 hc <- hclust(dist_mat)
 
 plot(hc, main = "Clustering using top correlated genes")
+
 ```
-PCA whole genome
+**Figure 11:** Dendrogram based on 100 most correlated genes
+1. High group is very distinct
 
+Strong separation
+→ driven by top genes (like SERINC5)
+
+2. Medium group is heterogeneous
+
+Splits into subclusters
+→ suggests different biological mechanisms
+
+3. Low group is compact
+
+Similar transcriptomes
+→ consistently low expression of key genes
+
+A subset of genes (top correlated genes) is sufficient to recover infectivity-based grouping of cell lines.
+
+Hierarchical clustering based on top correlated genes revealed clear separation of high-infectivity cell lines from low-infectivity ones, with intermediate cell lines forming subclusters, indicating heterogeneity within the medium infectivity group.
+
+
+### Principal Component Analysis
 ```{r}
-############################################
-## PCA WITH VARIANCE CHECK + BETTER PLOT
-############################################
-
-# Remove constant genes
+# Remove low-variance genes
 expr_mat_filtered <- expr_mat[
-  apply(expr_mat, 1, var, na.rm = TRUE) > 0, ]
+  apply(expr_mat, 1, function(x) var(x, na.rm = TRUE)) > 1e-5, ]
 
-# Log transform (important for RNA-seq)
+# Log transform (recommended)
 expr_mat_filtered <- log2(expr_mat_filtered + 1)
 
 # PCA
 pca <- prcomp(t(expr_mat_filtered), scale. = TRUE)
 
-############################################
-## -------- VARIANCE EXPLAINED --------
-############################################
-
+# Variance explained
 var_explained <- (pca$sdev^2) / sum(pca$sdev^2)
-cum_var <- cumsum(var_explained)
-
-# % variance
 percent_var <- round(var_explained * 100, 2)
-
-# PCs needed for 95%
-pcs_95 <- which(cum_var >= 0.90)[1]
-
-cat("Number of PCs for 95% variance:", pcs_95, "\n")
-
-############################################
-## -------- SCREE PLOT --------
-############################################
-
-plot(
-  percent_var,
-  type = "b",
-  pch = 19,
-  xlab = "Principal Component",
-  ylab = "Variance Explained (%)",
-  main = "Scree Plot"
-)
-
-abline(v = pcs_95, col = "red", lty = 2)
-
-############################################
-## -------- BETTER PCA PLOT --------
-############################################
-
-# Colors (clean + consistent)
-group_colors <- c("Low" = "red", "Medium" = "green3", "High" = "black")
-cols <- group_colors[data$Group]
 
 pc1_var <- percent_var[1]
 pc2_var <- percent_var[2]
 
-par(mar = c(5,5,2,2))
-
+# Plot
 plot(
   pca$x[,1], pca$x[,2],
-  col = cols,
+  col = as.factor(data$Group),
   pch = 19,
-  cex = 1.5,
   xlab = paste0("PC1 (", pc1_var, "%)"),
   ylab = paste0("PC2 (", pc2_var, "%)"),
   main = "PCA of Gene Expression"
 )
 
-# Add labels (optional but useful)
-text(
-  pca$x[,1], pca$x[,2],
-  labels = data$CellLine,
-  pos = 3,
-  cex = 0.7
-)
-
-# Legend
-legend(
-  "topleft",
-  legend = names(group_colors),
-  col = group_colors,
-  pch = 19,
-  pt.cex = 1.5
-)
+legend("topright",
+       legend = levels(as.factor(data$Group)),
+       col = 1:length(unique(data$Group)),
+       pch = 19)
 ```
-
-
-
-
+**Figure 12:** PCA of all genes together
 ```{r}
 ############################################
-## FIXED PCA + PC1 GENE EXTRACTION
+## PCA WITH 3 PCs (TOP GENES)
 ############################################
 
-# Get genes (KEEP ORDER)
-top20 <- cor_df$GeneID[1:20]
+top20 <- cor_df$GeneID[1:10]
 
-expr_top <- expr_merged[match(top20, expr_merged$GeneID), ]
-
-# Save gene IDs
-gene_ids <- expr_top$GeneID
-
-# Remove GeneID column
-expr_top <- expr_top[, -1]
-
-# Convert to numeric WITHOUT losing rownames
-expr_top <- as.matrix(expr_top)
-mode(expr_top) <- "numeric"
-
-# Restore rownames
-rownames(expr_top) <- gene_ids
+# KEEP ORDER
+expr_top <- expr_merged[match(top20, expr_merged$GeneID), -1]
+expr_top <- apply(expr_top, 2, as.numeric)
 
 # Log transform
 expr_top <- log2(expr_top + 1)
@@ -810,64 +789,115 @@ expr_top <- expr_top[apply(expr_top, 1, var) > 0, ]
 # PCA
 pca_top <- prcomp(t(expr_top), scale. = TRUE)
 
-############################################
-## PC1 LOADINGS
-############################################
+# Variance explained
+var_explained_top <- (pca_top$sdev^2) / sum(pca_top$sdev^2)
+percent_var_top <- round(var_explained_top * 100, 2)
 
-loadings <- pca_top$rotation[, 1]
-
-# Now names will exist ✔
-head(loadings)
-
-############################################
-## TOP GENES
-############################################
-
-top_n <- 10
-
-top_genes <- sort(abs(loadings), decreasing = TRUE)[1:top_n]
-
-cat("Top PC1 genes:\n")
-print(top_genes)
-
-cat("\nGene IDs:\n")
-print(names(top_genes))
+pc1_var <- percent_var_top[1]
+pc2_var <- percent_var_top[2]
+pc3_var <- percent_var_top[3]
 
 ############################################
-## POSITIVE vs NEGATIVE
+## -------- PAIRWISE PLOTS (BEST) --------
 ############################################
 
-pos_genes <- sort(loadings, decreasing = TRUE)[1:10]
-neg_genes <- sort(loadings, decreasing = FALSE)[1:10]
+par(mfrow = c(1,3))
 
-cat("\nPositive drivers:\n")
-print(pos_genes)
-
-cat("\nNegative drivers:\n")
-print(neg_genes)
-```
-Elbow plot
-```{r}
-############################################
-## ELBOW PLOT FOR K-MEANS
-############################################
-
-# Use first few PCs (e.g., 3 PCs)
-pc_data <- pca_top$x[, 1:3]
-
-# Compute WSS for different k
-wss <- sapply(1:10, function(k) {
-  kmeans(pc_data, centers = k, nstart = 10)$tot.withinss
-})
-
-# Plot
+# PC1 vs PC2
 plot(
-  1:10, wss,
-  type = "b",
+  pca_top$x[,1], pca_top$x[,2],
+  col = as.factor(data$Group),
   pch = 19,
-  xlab = "Number of clusters (k)",
-  ylab = "Within-cluster sum of squares (WSS)",
-  main = "Elbow Plot"
+  xlab = paste0("PC1 (", pc1_var, "%)"),
+  ylab = paste0("PC2 (", pc2_var, "%)"),
+  main = "PC1 vs PC2"
+)
+
+# PC1 vs PC3
+plot(
+  pca_top$x[,1], pca_top$x[,3],
+  col = as.factor(data$Group),
+  pch = 19,
+  xlab = paste0("PC1 (", pc1_var, "%)"),
+  ylab = paste0("PC3 (", pc3_var, "%)"),
+  main = "PC1 vs PC3"
+)
+
+# PC2 vs PC3
+plot(
+  pca_top$x[,2], pca_top$x[,3],
+  col = as.factor(data$Group),
+  pch = 19,
+  xlab = paste0("PC2 (", pc2_var, "%)"),
+  ylab = paste0("PC3 (", pc3_var, "%)"),
+  main = "PC2 vs PC3"
+)
+
+############################################
+## -------- LEGEND --------
+############################################
+
+legend(
+  "topright",
+  legend = levels(as.factor(data$Group)),
+  col = 1:length(unique(data$Group)),
+  pch = 19
 )
 ```
+**Figure 13:** PCA for 20 most correlated genes
+
+PCA of global gene expression does not show distinct clustering of infectivity groups, indicating that infectivity-related variation is driven by a subset of genes rather than overall transcriptomic differences.
+
+
+### K- means clustering
+
+```{r}
+############################################
+## K-MEANS CLUSTERING ON PCA
+############################################
+
+# Choose number of clusters (3 = Low/Medium/High)
+k <- 3
+
+# Run k-means on first 3 PCs
+set.seed(123)
+km <- kmeans(pca_top$x[,1:3], centers = k)
+
+clusters <- as.factor(km$cluster)
+
+############################################
+## PLOT WITH CLUSTERS
+############################################
+
+par(mfrow = c(1,1))
+
+plot(
+  pca_top$x[,1], pca_top$x[,2],
+  col = clusters,
+  pch = 19,
+  cex = 1.5,
+  xlab = paste0("PC1 (", pc1_var, "%)"),
+  ylab = paste0("PC2 (", pc2_var, "%)"),
+  main = "PCA with K-means Clusters"
+)
+
+legend(
+  "topright",
+  legend = paste("Cluster", 1:k),
+  col = 1:k,
+  pch = 19
+)
+```
+**Figure 14:** Clusters shown be different colours but not necessariry corresponting to the groups. 
+
+data is gradient-like
+Infectivity changes gradually
+Not discrete groups
+
+So PCA shows: overlap, spread, continuum
+
+Your dataset has: Strong trend (gradient), Not perfectly separated clusters
+
+While PCA suggests a continuous gradient of variation associated with infectivity, k-means clustering partitions this gradient into discrete groups, highlighting underlying structure but not strict separation.
+
 
