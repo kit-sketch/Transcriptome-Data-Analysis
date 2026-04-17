@@ -1,0 +1,312 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+
+```{r}
+infect <- read.table(file = "infect.txt", header = FALSE, sep = "\t", quote = "", dec = ".", stringsAsFactors = FALSE)
+
+#barplot( infect$V2, horiz = TRUE, main = "bar plot of infectivity ratio", xlab = "Nef+/Nef- infectivity ratio", names.arg = infect$V3)
+ 
+
+cell_colors <- c(
+  "Jurkat tag"  = "steelblue",
+  "JURKAT E6.1" = "steelblue",
+  "bl41"      = "seagreen3",
+  "RAMOS"     = "seagreen3",
+  "CEM A 301" = "seagreen3",
+  "CEM SS"     = "seagreen3",
+  "HSB2"     = "seagreen3",
+  "RAJI"      = "red3",
+  "C8166"     = "red3",
+  "WI38"      = "red3",
+  "DAUDI"     = "red3",
+  "MT4"       = "red3",
+  "IMR90"     = "red3",
+  "CEM X 174"   = "red3",
+  "HT1080"    = "red3"
+)
+
+
+#clean_name <- function(x) {
+#  toupper(gsub("[^A-Z0-9]", "", x))
+#}
+
+#infect$V3_clean <- clean_name(infect$V3)
+names(cell_colors) <- clean_name(names(cell_colors))
+
+infect$color <- "grey60"
+
+idx <- infect$V3 %in% names(cell_colors)
+infect$color[idx] <- cell_colors[infect$V3[idx]]
+
+infect_sorted <- infect[order(infect$V2), ]
+
+par(mar = c(4, 8, 2, 1))
+
+barplot(
+  infect_sorted$V2,
+  horiz = TRUE,
+  names.arg = infect_sorted$V3,
+  las = 1,
+  col = infect_sorted$color,
+  border = NA,
+  xlab = "Nef+/Nef- infectivity ratio",
+  xlim = c(0, 40)
+)
+
+
+```
+
+```{r}
+
+############################################
+## COMPLETE PIPELINE: SERINC5 vs Infectivity
+############################################
+
+## -------- SETTINGS --------
+gene_id <- "ENSG00000164300"   # SERINC5
+expr_folder <- "D:/sem8/biostatistics/transcriptome-data-analysis/gene data"
+
+## -------- STEP 1: READ INFECTIVITY DATA --------
+#infect <- read.table(
+#  "infect.txt",
+#  header = FALSE,
+#  sep = "\t",
+#  stringsAsFactors = FALSE
+#)
+
+colnames(infect) <- c("SRR", "Infectivity", "CellLine")
+infect$Infectivity <- as.numeric(infect$Infectivity)
+
+## -------- STEP 2: MAP SRR IDs TO CELL LINES --------
+file_to_cellline <- c(
+  "SRR2166626" = "HT1080",
+  "SRR2166634" = "CEM X 174",
+  "SRR2166632" = "IMR90",
+  "SRR2166624" = "MT4",
+  "SRR2166629" = "DAUDI",
+  "SRR2166635" = "WI38",
+  "SRR2166630" = "C8166",
+  "SRR2166627" = "RAJI",
+  "SRR2166625" = "HSB2",
+  "SRR2166628" = "CEM SS",
+  "SRR2166633" = "CEM A 301",
+  "SRR2166631" = "RAMOS",
+  "SRR2166637" = "bl41",
+  "SRR2166636" = "JURKAT E6.1",
+  "SRR2166638" = "Jurkat tag"
+)
+
+## -------- STEP 3: READ & MERGE EXPRESSION FILES --------
+files <- list.files(expr_folder, full.names = TRUE)
+
+read_expr <- function(file) {
+  df <- read.table(file, header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+  df <- df[, 1:2]
+
+  srr <- tools::file_path_sans_ext(basename(file))
+  cellline <- file_to_cellline[srr]
+
+  colnames(df) <- c("GeneID", cellline)
+  df
+}
+
+expr_list <- lapply(files, read_expr)
+
+expr_merged <- Reduce(
+  function(x, y) merge(x, y, by = "GeneID", all = TRUE),
+  expr_list
+)
+
+## -------- STEP 4: EXTRACT SERINC5 --------
+serinc5 <- expr_merged[expr_merged$GeneID == gene_id, -1]
+
+serinc5 <- as.data.frame(t(serinc5))
+serinc5$CellLine <- rownames(serinc5)
+rownames(serinc5) <- NULL
+
+colnames(serinc5) <- c("Expression", "CellLine")
+serinc5$Expression <- as.numeric(serinc5$Expression)
+
+## -------- STEP 5: MERGE WITH INFECTIVITY --------
+data <- merge(infect, serinc5, by = "CellLine")
+data <- data[complete.cases(data[, c("Infectivity", "Expression")]), ]
+
+## sanity check (should be 15)
+print(nrow(data))
+
+## -------- STEP 6: COLOR MAPPING --------
+
+cell_colors <- c(
+  "Jurkat tag"  = "steelblue",
+  "JURKAT E6.1" = "steelblue",
+  "bl41"      = "seagreen3",
+  "RAMOS"     = "seagreen3",
+  "CEM A 301" = "seagreen3",
+  "CEM SS"    = "seagreen3",
+  "HSB2"      = "seagreen3",
+  "RAJI"      = "red3",
+  "C8166"     = "red3",
+  "WI38"      = "red3",
+  "DAUDI"     = "red3",
+  "MT4"       = "red3",
+  "IMR90"     = "red3",
+  "CEM X 174" = "red3",
+  "HT1080"    = "red3"
+)
+data$color <- cell_colors[data$CellLine]
+
+## -------- STEP 7: CORRELATION --------
+ct <- cor.test(data$Infectivity, data$Expression, method = "pearson")
+r  <- round(ct$estimate, 3)
+r2 <- round(r^2, 4)
+
+## -------- STEP 8: SCATTER PLOT --------
+par(mar = c(4, 5, 2, 1))
+
+plot(
+  data$Infectivity,
+  data$Expression,
+  pch = 21,
+  bg  = data$color,
+  col = "black",
+  cex = 1.7,
+  xlab = expression("Nef"^"+"*"/Nef"^"-"*" infectivity ratio"),
+  ylab = "SERINC5 expression (RPM)"
+)
+
+abline(lm(Expression ~ Infectivity, data = data), lwd = 2)
+
+text(
+  x = min(data$Infectivity),
+  y = max(data$Expression),
+  labels = bquote(
+    atop(
+      italic(r) == .(r),
+      atop(
+        italic(R)^2 == .(r2),
+        italic(P) < 0.001
+      )
+    )
+  ),
+  adj = c(0, 1),
+  cex = 1
+)
+
+```
+
+```{r}
+
+############################################
+## GENE-WISE CORRELATION WITH INFECTIVITY
+############################################
+
+## -------- SETTINGS --------
+expr_folder <- "D:/sem8/biostatistics/gene data"
+
+## -------- STEP 1: READ INFECTIVITY DATA --------
+infect <- read.table(
+  "infect.txt",
+  header = FALSE,
+  sep = "\t",
+  stringsAsFactors = FALSE
+)
+
+colnames(infect) <- c("SRR", "Infectivity", "CellLine")
+infect$Infectivity <- as.numeric(infect$Infectivity)
+
+## -------- STEP 2: SRR → CELL LINE MAP --------
+file_to_cellline <- c(
+  "SRR2166626" = "HT1080",
+  "SRR2166634" = "CEM X 174",
+  "SRR2166632" = "IMR90",
+  "SRR2166624" = "MT4",
+  "SRR2166629" = "DAUDI",
+  "SRR2166635" = "WI38",
+  "SRR2166630" = "C8166",
+  "SRR2166627" = "RAJI",
+  "SRR2166625" = "HSB2",
+  "SRR2166628" = "CEM SS",
+  "SRR2166633" = "CEM A 301",
+  "SRR2166631" = "RAMOS",
+  "SRR2166637" = "bl41",
+  "SRR2166636" = "JURKAT E6.1",
+  "SRR2166638" = "Jurkat tag"
+)
+
+## -------- STEP 3: READ & MERGE EXPRESSION FILES --------
+files <- list.files(expr_folder, full.names = TRUE)
+
+read_expr <- function(file) {
+  df <- read.table(file, header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+  df <- df[, 1:2]
+
+  srr <- tools::file_path_sans_ext(basename(file))
+  cellline <- file_to_cellline[srr]
+
+  colnames(df) <- c("GeneID", cellline)
+  df
+}
+
+expr_list <- lapply(files, read_expr)
+
+expr_merged <- Reduce(
+  function(x, y) merge(x, y, by = "GeneID", all = TRUE),
+  expr_list
+)
+
+## -------- STEP 4: REORDER EXPRESSION COLUMNS TO MATCH INFECTIVITY --------
+cell_order <- infect$CellLine
+expr_mat <- expr_merged[, cell_order]
+expr_mat <- apply(expr_mat, 2, as.numeric)
+
+## -------- STEP 5: COMPUTE GENE-WISE CORRELATIONS --------
+cor_results <- apply(expr_mat, 1, function(gene_expr) {
+
+  valid <- is.finite(gene_expr) & is.finite(infect$Infectivity)
+
+  if (sum(valid) < 3) {
+    return(c(r = NA, R2 = NA, p = NA))
+  }
+
+  ct <- cor.test(
+    gene_expr[valid],
+    infect$Infectivity[valid],
+    method = "pearson"
+  )
+
+  c(
+    r  = unname(ct$estimate),
+    R2 = unname(ct$estimate)^2,
+    p  = ct$p.value
+  )
+})
+
+## -------- STEP 6: FINAL RESULTS TABLE --------
+cor_df <- data.frame(
+  GeneID = expr_merged$GeneID,
+  t(cor_results),
+  row.names = NULL
+)
+
+cor_df$r  <- as.numeric(cor_df$r)
+cor_df$R2 <- as.numeric(cor_df$R2)
+cor_df$p  <- as.numeric(cor_df$p)
+
+## -------- STEP 7: MULTIPLE TEST CORRECTION --------
+cor_df$FDR <- p.adjust(cor_df$p, method = "BH")
+
+## -------- STEP 8: SORT BY EFFECT SIZE --------
+cor_df <- cor_df[order(-abs(cor_df$r)), ]
+
+## DONE
+head(cor_df)
+
+
+```
+
